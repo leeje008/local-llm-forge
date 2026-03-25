@@ -33,6 +33,10 @@ class EngineConfig:
     # Speculative decoding
     draft_model_path: str | None = None
     num_draft_tokens: int = 3
+    # KV cache optimization
+    kv_bits: int | None = None  # 8 for FP8 KV cache quantization
+    kv_group_size: int = 64
+    max_kv_size: int | None = None  # Sliding window limit
     # Prompt cache
     prompt_cache_path: str | None = None
 
@@ -93,6 +97,14 @@ class MLXEngine:
         first_token_time = None
         tokens = []
 
+        # Build extra kwargs for KV cache optimization
+        extra_kwargs = {}
+        if self.config.kv_bits:
+            extra_kwargs["kv_bits"] = self.config.kv_bits
+            extra_kwargs["kv_group_size"] = self.config.kv_group_size
+        if self.config.max_kv_size:
+            extra_kwargs["max_kv_size"] = self.config.max_kv_size
+
         for response in mlx_lm.stream_generate(
             model=self._model,
             tokenizer=self._tokenizer,
@@ -100,6 +112,7 @@ class MLXEngine:
             max_tokens=max_tokens,
             draft_model=self._draft_model,
             sampler=sampler,
+            **extra_kwargs,
         ):
             if first_token_time is None:
                 first_token_time = time.monotonic()
@@ -128,6 +141,13 @@ class MLXEngine:
         from mlx_lm.sample_utils import make_sampler
         sampler = make_sampler(temp=temperature, top_p=top_p)
 
+        extra_kwargs = {}
+        if self.config.kv_bits:
+            extra_kwargs["kv_bits"] = self.config.kv_bits
+            extra_kwargs["kv_group_size"] = self.config.kv_group_size
+        if self.config.max_kv_size:
+            extra_kwargs["max_kv_size"] = self.config.max_kv_size
+
         start = time.monotonic()
         count = 0
 
@@ -138,6 +158,7 @@ class MLXEngine:
             max_tokens=max_tokens,
             draft_model=self._draft_model,
             sampler=sampler,
+            **extra_kwargs,
         ):
             count += 1
             yield response.text

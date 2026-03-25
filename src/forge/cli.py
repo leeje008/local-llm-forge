@@ -63,6 +63,15 @@ def analyze(model_id: str, trust_remote_code: bool):
     console.print()
     console.print(strategy_selector.format_report(strategy))
 
+    # ANE assessment
+    from forge.engine.ane_hybrid import assess_ane_compatibility, format_ane_report
+
+    ane_profile = assess_ane_compatibility(
+        model.total_params_b, model.architecture, hw.total_memory_gb, hw.ane_tops,
+    )
+    console.print()
+    console.print(format_ane_report(ane_profile))
+
 
 @main.command()
 @click.argument("model_id")
@@ -186,9 +195,12 @@ def optimize(
 @click.option("--draft", type=click.Path(), default=None, help="Draft model for speculative decoding")
 @click.option("--auto-draft", is_flag=True, help="Auto-select draft model")
 @click.option("--temperature", type=float, default=0.7)
+@click.option("--kv-bits", type=click.Choice(["4", "8"]), default=None, help="KV cache quantization bits")
+@click.option("--max-kv-size", type=int, default=None, help="Sliding window KV cache limit")
 @click.option("--stream/--no-stream", default=True)
 def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
-        auto_draft: bool, temperature: float, stream: bool):
+        auto_draft: bool, temperature: float, kv_bits: str | None,
+        max_kv_size: int | None, stream: bool):
     """Generate text using the MLX engine with optional speculative decoding.
 
     MODEL_PATH: Path to optimized model
@@ -224,6 +236,8 @@ def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
         max_tokens=max_tokens,
         temperature=temperature,
         draft_model_path=draft_path,
+        kv_bits=int(kv_bits) if kv_bits else None,
+        max_kv_size=max_kv_size,
     )
 
     with console.status("[bold blue]Loading model..."):
