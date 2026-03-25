@@ -181,6 +181,72 @@ def optimize(
 
 @main.command()
 @click.argument("model_path", type=click.Path(exists=True))
+@click.argument("prompt")
+@click.option("--max-tokens", type=int, default=256)
+@click.option("--draft", type=click.Path(), default=None, help="Draft model for speculative decoding")
+@click.option("--auto-draft", is_flag=True, help="Auto-select draft model")
+@click.option("--temperature", type=float, default=0.7)
+@click.option("--stream/--no-stream", default=True)
+def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
+        auto_draft: bool, temperature: float, stream: bool):
+    """Generate text using the MLX engine with optional speculative decoding.
+
+    MODEL_PATH: Path to optimized model
+    PROMPT: Text prompt
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    draft_path = draft
+    if auto_draft and not draft_path:
+        # Auto-select draft model
+        config_file = Path(model_path) / "forge_config.yaml"
+        arch = "unknown"
+        if config_file.exists():
+            import yaml
+            with open(config_file) as f:
+                cfg = yaml.safe_load(f) or {}
+            # Try to detect architecture from model_id
+            model_id = cfg.get("model_id", "")
+            arch = model_id.lower()
+
+        from forge.engine.speculative import select_draft_model
+        draft_info = select_draft_model(arch)
+        if draft_info:
+            draft_path = draft_info.model_id
+            console.print(f"[blue]Auto-selected draft: {draft_info.model_id} ({draft_info.source})")
+
+    from forge.engine.mlx_engine import EngineConfig, MLXEngine
+
+    config = EngineConfig(
+        model_path=model_path,
+        max_tokens=max_tokens,
+        temperature=temperature,
+        draft_model_path=draft_path,
+    )
+
+    with console.status("[bold blue]Loading model..."):
+        engine = MLXEngine(config)
+        engine.load()
+
+    if stream:
+        console.print()
+        for chunk in engine.stream(prompt, max_tokens=max_tokens, temperature=temperature):
+            console.print(chunk, end="")
+        console.print()
+    else:
+        result = engine.generate(prompt, max_tokens=max_tokens, temperature=temperature)
+        console.print()
+        console.print(result.text)
+        console.print()
+        console.print(f"[dim]{result.tokens_generated} tokens, {result.tps:.1f} tok/s, "
+                      f"TTFT {result.ttft_seconds:.2f}s"
+                      f"{', speculative' if result.speculative_used else ''}[/dim]")
+
+
+@main.command()
+@click.argument("model_path", type=click.Path(exists=True))
 @click.option("--host", default="127.0.0.1")
 @click.option("--port", type=int, default=8080)
 @click.option("--runtime", type=click.Choice(["mlx-lm", "ollama"]), default=None)
@@ -229,7 +295,20 @@ def deploy(model_path: str, host: str, port: int, runtime: str | None):
         except KeyboardInterrupt:
             console.print("\n[yellow]Server stopped.")
     elif selected_runtime == "ollama":
-        console.print("[yellow]Ollama deployment: use 'ollama run <model>' directly.")
+        from forge.pipeline.deployer import create_ollama_model
+
+        # Read model_id from forge config
+        model_id = config.get("model_id", "") if config_file.exists() else ""
+        if model_id:
+            with console.status("[bold green]Registering with Ollama..."):
+                ctx = config.get("context_length", 4096) if config_file.exists() else 4096
+                ok, msg = create_ollama_model(model_id, context_length=ctx)
+            if ok:
+                console.print(f"[green]{msg}")
+            else:
+                console.print(f"[red]{msg}")
+        else:
+            console.print("[yellow]No model_id in config. Use: ollama run hf.co/<model>")
     else:
         console.print(f"[red]Unsupported runtime: {selected_runtime}")
 
@@ -303,6 +382,52 @@ def list_models(optimized_dir: str):
         size = sum(f.stat().st_size for f in model_dir.rglob("*") if f.is_file())
         size_gb = size / (1024**3)
         console.print(f"  {info}  ({size_gb:.1f} GB on disk)")
+
+
+@main.command()
+@click.argument("model_path", type=click.Path(exists=True))
+@click.option("--prompt", "-p", required=True, help="System prompt to cache")
+@click.option("--output", "-o", type=click.Path(), default=None, help="Cache output path")
+def cache(model_path: str, prompt: str, output: str | None):
+    """Pre-compute KV cache for a system prompt (zero-latency reuse).
+
+    MODEL_PATH: Path to optimized model directory
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    with console.status("[bold blue]Computing prompt cache..."):
+        from forge.engine.prompt_cache import cache_prompt
+
+        cache_out = Path(output) if output else None
+        result = cache_prompt(model_path, prompt, cache_out)
+
+    if result.success:
+        console.print(f"[green]Prompt cached: {result.cache_path} ({result.size_mb:.1f} MB)")
+    else:
+        console.print(f"[red]Cache failed: {result.error}")
+
+
+@main.command(name="cache-list")
+@click.argument("model_path", type=click.Path(exists=True))
+def cache_list(model_path: str):
+    """List cached prompts for a model."""
+    from rich.console import Console
+
+    console = Console()
+
+    from forge.engine.prompt_cache import list_caches
+
+    caches = list_caches(model_path)
+    if not caches:
+        console.print("[yellow]No cached prompts found.")
+        return
+
+    console.print("Cached Prompts")
+    console.print("=" * 50)
+    for c in caches:
+        console.print(f"  {c['name']}  ({c['size_mb']} MB)")
 
 
 if __name__ == "__main__":
