@@ -72,6 +72,47 @@ def analyze(model_id: str, trust_remote_code: bool):
     console.print()
     console.print(format_ane_report(ane_profile))
 
+    # Routing analysis
+    from forge.router.feasibility import format_route_report, route
+
+    decision = route(model, hw, budget)
+    console.print()
+    console.print(format_route_report(decision))
+
+
+@main.command()
+@click.argument("model_id")
+@click.option("--trust-remote-code", is_flag=True)
+def route(model_id: str, trust_remote_code: bool):
+    """Analyze model feasibility and show all execution paths.
+
+    MODEL_ID: HuggingFace model ID (e.g. meta-llama/Llama-3.1-70B)
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    with console.status("[bold blue]Analyzing model feasibility..."):
+        from forge.analyzer import hardware_profiler, memory_calculator, model_inspector
+
+        hw = hardware_profiler.detect()
+        try:
+            model = model_inspector.inspect(model_id, trust_remote_code=trust_remote_code)
+        except Exception as e:
+            console.print(f"[red]Error: {e}")
+            sys.exit(1)
+        budget = memory_calculator.calculate(model, hw)
+
+    from forge.router.feasibility import format_route_report
+    from forge.router.feasibility import route as do_route
+
+    decision = do_route(model, hw, budget)
+
+    console.print()
+    console.print(f"[bold]{model_id}[/bold] — {model.total_params_b:.1f}B params, {model.model_type.upper()}")
+    console.print()
+    console.print(format_route_report(decision))
+
 
 @main.command()
 @click.argument("model_id")
@@ -118,8 +159,17 @@ def optimize(
         )
 
     if not budget.can_run and not force_quant:
-        console.print("[red]Model cannot fit in available memory.")
-        console.print(memory_calculator.format_report(budget))
+        console.print("[yellow]Model cannot fit in available memory with standard quantization.")
+        console.print()
+
+        # Show routing alternatives instead of hard exit
+        from forge.router.feasibility import format_route_report
+        from forge.router.feasibility import route as do_route
+
+        decision = do_route(model, hw, budget)
+        console.print(format_route_report(decision))
+        console.print()
+        console.print("[yellow]Use one of the suggested commands above, or force with --bits flag.")
         sys.exit(1)
 
     console.print(strategy_selector.format_report(strategy))
