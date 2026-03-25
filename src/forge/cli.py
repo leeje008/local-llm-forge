@@ -494,5 +494,76 @@ def cache_list(model_path: str):
         console.print(f"  {c['name']}  ({c['size_mb']} MB)")
 
 
+@main.command(name="eval")
+@click.argument("model_path", type=click.Path(exists=True))
+@click.option("--suite", type=click.Choice(["quick", "standard", "reasoning", "code", "full"]),
+              default="quick")
+@click.option("--limit", type=int, default=None, help="Limit samples per task")
+@click.option("--save", type=click.Path(), default=None)
+def eval_model(model_path: str, suite: str, limit: int | None, save: str | None):
+    """Evaluate model quality using standard benchmarks.
+
+    MODEL_PATH: Path to optimized model
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    with console.status(f"[bold blue]Running {suite} evaluation..."):
+        from forge.pipeline.eval_pipeline import format_eval_report, run_eval
+
+        report = run_eval(model_path, suite=suite, limit=limit)
+
+    console.print(format_eval_report(report))
+
+    if save:
+        import json
+        from dataclasses import asdict
+
+        Path(save).write_text(json.dumps(asdict(report), indent=2))
+        console.print(f"\n[green]Saved to {save}")
+
+
+@main.command()
+@click.argument("model_path", type=click.Path(exists=True))
+@click.option("--tokens", type=int, default=200, help="Tokens to generate")
+@click.option("--prompt", default="Explain the concept of recursion in computer science with examples.")
+def profile(model_path: str, tokens: int, prompt: str):
+    """Profile token-level latency distribution.
+
+    MODEL_PATH: Path to optimized model
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    with console.status("[bold blue]Profiling latency..."):
+        from forge.analysis.latency_profiler import format_latency_report, profile_generation
+
+        result = profile_generation(model_path, prompt=prompt, max_tokens=tokens)
+
+    console.print(format_latency_report(result))
+
+
+@main.command()
+@click.argument("model_path", type=click.Path(exists=True))
+@click.option("--target-bits", type=float, default=4.0, help="Target average bits")
+def sensitivity(model_path: str, target_bits: float):
+    """Analyze per-layer quantization sensitivity for mixed-precision.
+
+    MODEL_PATH: Path to model (FP16 or quantized)
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    with console.status("[bold blue]Analyzing layer sensitivity..."):
+        from forge.analysis.sensitivity import analyze_weight_sensitivity, format_sensitivity_report
+
+        report = analyze_weight_sensitivity(model_path, target_avg_bits=target_bits)
+
+    console.print(format_sensitivity_report(report))
+
+
 if __name__ == "__main__":
     main()
