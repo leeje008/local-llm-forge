@@ -1,6 +1,18 @@
 # 구현 단계별 계획
 
-## Phase 1: MVP — 모델 분석 + 기본 최적화 (목표: 2주)
+## 실측 벤치마크 결과 (Qwen2.5-7B 4-bit, M4 Pro 48GB)
+
+| 설정 | 속도 (tok/s) | 배수 | 비고 |
+|------|-------------|------|------|
+| Baseline | 55.7 | 1.00x | MLX 4-bit 기본 |
+| + Speculative (0.5B draft) | 67.6 | 1.21x | 가장 큰 향상 |
+| + KV-bits 8 (FP8 KV) | 53.8 | ~1.0x | 메모리 50% 절약 |
+| + Spec + KV-bits 8 | 61.5 | 1.10x | 속도 + 메모리 절약 |
+| HQQ 3-bit (0.5B) | 308.6 | — | 작은 모델 참고 |
+
+---
+
+## Phase 1: MVP — 모델 분석 + 기본 최적화 (완료)
 
 ### 목표
 `forge analyze <model>` → `forge optimize <model>` → 동작하는 최적화 모델
