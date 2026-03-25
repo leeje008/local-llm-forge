@@ -1,0 +1,41 @@
+# local-llm-forge default configuration
+
+# Memory management
+memory:
+  os_overhead_gb: 8           # macOS reserved memory
+  framework_buffer_gb: 2      # Python/MLX runtime
+  safety_margin: 0.85         # Use at most 85% of available memory
+
+# Quantization defaults
+quantization:
+  default_bits: 4
+  default_group_size: 128
+  preferred_method: mlx_native  # mlx_native, hqq, aqlm
+
+# Runtime preferences
+runtime:
+  preferred: mlx-lm           # mlx-lm, ollama, llama.cpp
+  fallback: ollama
+
+# Profiling
+profiling:
+  warmup_tokens: 10
+  benchmark_tokens: 100
+  auto_tune: true
+
+# Output
+output:
+  optimized_dir: ./optimized
+  cache_dir: ~/.forge/cache
+  profiles_dir: ~/.forge/profiles
+
+# Speculative decoding
+speculative:
+  enabled: false              # Enable via --speculative flag
+  max_draft_tokens: 5
+  min_target_size_b: 7        # Only for models >= 7B
+
+# Prompt caching
+prompt_cache:
+  enabled: true
+  cache_dir: ~/.forge/prompt_cache

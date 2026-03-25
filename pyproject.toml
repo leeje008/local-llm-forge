@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=75.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-llm-forge"
+version = "0.1.0"
+description = "Auto-optimize and deploy LLM models on local Apple Silicon"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+    "mlx>=0.30.0",
+    "mlx-lm>=0.22.0",
+    "transformers>=4.45.0",
+    "huggingface-hub>=0.25.0",
+    "click>=8.1.0",
+    "pyyaml>=6.0",
+    "rich>=13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+    "ruff",
+]
+quantization = [
+    "hqq>=0.2.0",
+]
+ane = [
+    "coremltools>=8.0",
+]
+
+[project.scripts]
+forge = "forge.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
