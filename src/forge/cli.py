@@ -120,6 +120,7 @@ def route(model_id: str, trust_remote_code: bool):
 @click.option("--method", type=click.Choice(["mlx_native", "hqq"]), default=None)
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output directory")
 @click.option("--speculative", is_flag=True, help="Enable speculative decoding")
+@click.option("--mixed-precision", "mixed_prec", is_flag=True, help="Per-layer mixed-precision quantization")
 @click.option("--profile", is_flag=True, default=True, help="Run profiling after optimization")
 @click.option("--trust-remote-code", is_flag=True)
 def optimize(
@@ -128,6 +129,7 @@ def optimize(
     method: str | None,
     output: str | None,
     speculative: bool,
+    mixed_prec: bool,
     profile: bool,
     trust_remote_code: bool,
 ):
@@ -182,17 +184,50 @@ def optimize(
     # 3. Build (convert + quantize)
     safe_name = model_id.replace("/", "--")
     quant_bits = bits or int(strategy.quantization.replace("int", "").replace("fp", ""))
-    output_dir = Path(output) if output else Path(f"./optimized/{safe_name}-q{quant_bits}")
 
-    with console.status(f"[bold green]Converting & quantizing ({strategy.quant_method} {strategy.quantization})..."):
-        from forge.optimizer.quantizer import quantize
+    if mixed_prec:
+        # Mixed-precision path
+        output_dir = Path(output) if output else Path(f"./optimized/{safe_name}-mixed")
+        with console.status("[bold green]Analyzing layer sensitivity for mixed-precision..."):
+            from forge.optimizer.mixed_precision import (
+                analyze_and_allocate,
+                apply_mixed_quantization,
+                format_plan_report,
+            )
+            plan = analyze_and_allocate(model_id, target_avg_bits=float(quant_bits))
 
-        result = quantize(
-            model_id=model_id,
-            output_dir=output_dir,
-            method=strategy.quant_method,
-            bits=quant_bits,
+        console.print(format_plan_report(plan))
+        console.print()
+
+        with console.status("[bold green]Applying mixed-precision quantization..."):
+            ok, msg = apply_mixed_quantization(model_id, plan, output_dir)
+
+        if not ok:
+            console.print(f"[red]Mixed-precision failed: {msg}")
+            console.print("[yellow]Falling back to uniform quantization...")
+            # Fall through to standard path
+            mixed_prec = False
+
+    if not mixed_prec:
+        output_dir = Path(output) if output else Path(f"./optimized/{safe_name}-q{quant_bits}")
+
+    if mixed_prec and ok:
+        # Mixed-precision already applied above; create a QuantResult-like object
+        from forge.optimizer.quantizer import QuantResult, _dir_size_gb
+        result = QuantResult(
+            output_path=output_dir, quant=f"mixed_avg{plan.avg_bits:.0f}",
+            method="mixed_precision", size_gb=_dir_size_gb(output_dir), success=True,
         )
+    else:
+        with console.status(f"[bold green]Converting & quantizing ({strategy.quant_method} {strategy.quantization})..."):
+            from forge.optimizer.quantizer import quantize
+
+            result = quantize(
+                model_id=model_id,
+                output_dir=output_dir,
+                method=strategy.quant_method,
+                bits=quant_bits,
+            )
 
     if not result.success:
         console.print(f"[red]Quantization failed: {result.error}")
@@ -244,12 +279,13 @@ def optimize(
 @click.option("--max-tokens", type=int, default=256)
 @click.option("--draft", type=click.Path(), default=None, help="Draft model for speculative decoding")
 @click.option("--auto-draft", is_flag=True, help="Auto-select draft model")
+@click.option("--redrafter", is_flag=True, help="Use ReDrafter for speculative decoding")
 @click.option("--temperature", type=float, default=0.7)
 @click.option("--kv-bits", type=click.Choice(["4", "8"]), default=None, help="KV cache quantization bits")
 @click.option("--max-kv-size", type=int, default=None, help="Sliding window KV cache limit")
 @click.option("--stream/--no-stream", default=True)
 def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
-        auto_draft: bool, temperature: float, kv_bits: str | None,
+        auto_draft: bool, redrafter: bool, temperature: float, kv_bits: str | None,
         max_kv_size: int | None, stream: bool):
     """Generate text using the MLX engine with optional speculative decoding.
 
@@ -261,15 +297,29 @@ def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
     console = Console()
 
     draft_path = draft
-    if auto_draft and not draft_path:
-        # Auto-select draft model
+    if redrafter and not draft_path:
+        # ReDrafter selection (priority over auto-draft)
+        config_file = Path(model_path) / "forge_config.yaml"
+        arch = model_id = ""
+        if config_file.exists():
+            import yaml
+            with open(config_file) as f:
+                cfg = yaml.safe_load(f) or {}
+            model_id = cfg.get("model_id", "")
+            arch = model_id.lower()
+
+        from forge.engine.redrafter import format_redrafter_info, select_redrafter
+        rd_info = select_redrafter(arch, model_id)
+        draft_path = rd_info.model_id
+        console.print(format_redrafter_info(rd_info))
+
+    elif auto_draft and not draft_path:
         config_file = Path(model_path) / "forge_config.yaml"
         arch = "unknown"
         if config_file.exists():
             import yaml
             with open(config_file) as f:
                 cfg = yaml.safe_load(f) or {}
-            # Try to detect architecture from model_id
             model_id = cfg.get("model_id", "")
             arch = model_id.lower()
 
@@ -492,6 +542,63 @@ def cache_list(model_path: str):
     console.print("=" * 50)
     for c in caches:
         console.print(f"  {c['name']}  ({c['size_mb']} MB)")
+
+
+@main.command(name="expert-prune")
+@click.argument("model_id")
+@click.option("--ratio", type=float, default=0.25, help="Fraction of experts to prune (0.25=25%)")
+@click.option("--method", type=click.Choice(["remove", "merge"]), default="remove")
+@click.option("--num-samples", type=int, default=20, help="Calibration prompts")
+@click.option("--save-plan", type=click.Path(), default=None, help="Save pruning plan JSON")
+def expert_prune(model_id: str, ratio: float, method: str, num_samples: int, save_plan: str | None):
+    """Analyze MoE expert importance and create pruning plan.
+
+    MODEL_ID: HuggingFace MoE model ID (e.g. mistralai/Mixtral-8x7B-Instruct-v0.1)
+    """
+    from rich.console import Console
+
+    console = Console()
+
+    # Verify MoE model
+    with console.status("[bold blue]Inspecting model..."):
+        from forge.analyzer.model_inspector import inspect
+
+        model = inspect(model_id, trust_remote_code=True)
+
+    if model.model_type != "moe":
+        console.print(f"[red]{model_id} is not a MoE model (type={model.model_type}). Expert pruning requires MoE.")
+        sys.exit(1)
+
+    console.print(f"[blue]MoE model: {model.num_experts} experts, {model.num_active_experts} active/token")
+
+    with console.status(f"[bold blue]Capturing expert activations ({num_samples} samples)..."):
+        from forge.optimizer.expert_pruner import (
+            analyze_expert_importance,
+            create_pruning_plan,
+            format_pruning_plan,
+            save_pruning_plan,
+        )
+
+        rankings = analyze_expert_importance(model_id, num_samples=num_samples)
+
+    if not rankings:
+        console.print("[red]Failed to capture expert activations. Model may not have accessible gate modules.")
+        sys.exit(1)
+
+    plan = create_pruning_plan(
+        model_id=model_id,
+        rankings=rankings,
+        prune_ratio=ratio,
+        method=method,
+        num_experts=model.num_experts or 8,
+    )
+
+    console.print()
+    console.print(format_pruning_plan(plan))
+
+    if save_plan:
+        save_pruning_plan(plan, Path(save_plan))
+        console.print(f"\n[green]Pruning plan saved to: {save_plan}")
 
 
 @main.command(name="eval")
