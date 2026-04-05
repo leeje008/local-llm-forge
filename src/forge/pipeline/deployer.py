@@ -20,6 +20,23 @@ class DeployConfig:
     host: str = "127.0.0.1"
     port: int = 8080
     context_length: int = 4096
+    # Phase 10 advanced scheduling options
+    chunked_prefill: bool = False
+    chunk_size: int = 512
+    interruptible: bool = False
+    multi_model: bool = False
+    pmpd: bool = False
+    use_vllm_mlx: bool = False
+    memory_budget_gb: float = 32.0
+
+    def advanced_enabled(self) -> bool:
+        return any([
+            self.chunked_prefill,
+            self.interruptible,
+            self.multi_model,
+            self.pmpd,
+            self.use_vllm_mlx,
+        ])
 
 
 def save_config(
@@ -32,6 +49,51 @@ def save_config(
     config = {"model_path": str(model_path), **strategy_dict}
     config_path.write_text(yaml.dump(config, default_flow_style=False, allow_unicode=True))
     return config_path
+
+
+def serve_advanced(config: DeployConfig) -> subprocess.Popen:
+    """Start a server with Phase 10 advanced scheduling hooks enabled.
+
+    Builds a :class:`forge.engine.scheduler.AdvancedServingContext` with
+    the chunked-prefill / interruptible / multi-model / PMPD / vllm-mlx
+    components requested on ``config``, then hands off to
+    :func:`serve_mlx` as the actual transport. The advanced context is
+    attached to the returned process object as ``.forge_context`` so
+    that callers (tests, future HTTP glue) can inspect or drive it.
+
+    This keeps the control plane decoupled from the mlx-lm server
+    binary: when upstream exposes request-level hooks, the runner can be
+    swapped for one that actually consumes the scheduler's work units.
+    """
+    from forge.engine import scheduler as _sched
+    from forge.engine.mlx_engine import EngineConfig
+
+    base_cfg = EngineConfig(
+        model_path=config.model_path,
+        pmpd_mode=config.pmpd,
+    )
+
+    ctx = _sched.build_context(
+        model_path=config.model_path,
+        chunked_prefill=config.chunked_prefill,
+        chunk_size=config.chunk_size,
+        interruptible=config.interruptible,
+        multi_model=config.multi_model,
+        pmpd=config.pmpd,
+        use_vllm_mlx=config.use_vllm_mlx,
+        memory_budget_gb=config.memory_budget_gb,
+        base_config=base_cfg,
+    )
+
+    # For now we still launch mlx_lm.server as the actual transport.
+    # Once upstream exposes per-request hooks (or we ship our own HTTP
+    # layer) this is where the runner would consume ``ctx.scheduler``.
+    process = serve_mlx(config.model_path, host=config.host, port=config.port)
+    try:
+        process.forge_context = ctx  # type: ignore[attr-defined]
+    except Exception:  # noqa: BLE001
+        pass
+    return process
 
 
 def serve_mlx(

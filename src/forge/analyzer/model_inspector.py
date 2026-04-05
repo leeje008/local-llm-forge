@@ -15,6 +15,7 @@ class ModelProfile:
     model_id: str = ""
     architecture: str = ""  # "llama", "qwen2", "mistral", "mixtral", ...
     model_type: str = "dense"  # "dense" | "moe"
+    architecture_family: str = "transformer"  # Phase 11: transformer | mamba | hybrid-mamba | rwkv7 | mla | bitnet
     total_params_b: float = 0.0  # billions
     num_layers: int = 0
     hidden_size: int = 0
@@ -79,6 +80,55 @@ def _estimate_params_moe(p: ModelProfile) -> float:
     per_layer = attn_per_layer + ffn_total + norm
     total = embed + n * per_layer
     return total / 1e9
+
+
+def _detect_architecture_family(raw: dict, architecture: str) -> str:
+    """Classify a HF config into a high-level architecture family.
+
+    Returns one of:
+      - "transformer"  (default dense / MoE transformer)
+      - "mamba"        (pure state-space, e.g. mamba, mamba2)
+      - "hybrid-mamba" (interleaved SSM+attention, e.g. Granite 4.0-H, Jamba, Zamba)
+      - "rwkv7"        (RWKV-4/5/6/7 linear recurrence)
+      - "mla"          (DeepSeek-V2/V3 multi-head latent attention)
+      - "bitnet"       (BitNet b1.58 ternary weights)
+    """
+    arch = (architecture or "").lower()
+    model_type = str(raw.get("model_type", "")).lower()
+    archs_list = [str(a).lower() for a in raw.get("architectures", [])]
+    combined = " ".join([arch, model_type, *archs_list])
+
+    # BitNet
+    if "bitnet" in combined or raw.get("quantization_config", {}).get("quant_method") == "bitnet":
+        return "bitnet"
+
+    # RWKV (all generations)
+    if "rwkv" in combined:
+        return "rwkv7"
+
+    # DeepSeek MLA — presence of kv_lora_rank is the definitive signal
+    if "kv_lora_rank" in raw or "q_lora_rank" in raw or "deepseek_v2" in combined or "deepseek_v3" in combined:
+        return "mla"
+
+    # Hybrid Mamba / SSM+Attention
+    if any(k in combined for k in ("granite", "jamba", "zamba", "hybrid")):
+        if "layer_types" in raw or "block_types" in raw or "attn_layer_indices" in raw:
+            return "hybrid-mamba"
+        # Granite 4.0-H, Jamba, Zamba2 explicitly identify as hybrid even
+        # without a layer_types list.
+        if "granite" in combined and ("mamba" in combined or raw.get("mamba_d_state")):
+            return "hybrid-mamba"
+        if "jamba" in combined or "zamba" in combined:
+            return "hybrid-mamba"
+
+    # Pure Mamba
+    if "mamba" in combined or raw.get("mamba_d_state") is not None or raw.get("state_size") is not None:
+        # Distinguish pure vs hybrid by the absence of attention heads.
+        if raw.get("num_attention_heads", 0) == 0:
+            return "mamba"
+        return "hybrid-mamba"
+
+    return "transformer"
 
 
 def _detect_attention_type(num_heads: int, num_kv_heads: int) -> str:
@@ -158,6 +208,9 @@ def inspect(model_id: str, trust_remote_code: bool = False) -> ModelProfile:
     else:
         p.model_type = "dense"
 
+    # Phase 11: architecture family detection (Mamba / RWKV / MLA / BitNet / hybrid)
+    p.architecture_family = _detect_architecture_family(raw, p.architecture)
+
     # Parameter estimation
     if p.model_type == "moe":
         p.total_params_b = _estimate_params_moe(p)
@@ -207,6 +260,7 @@ def inspect_local(config_path: str | Path) -> ModelProfile:
         p.model_type = "dense"
         p.total_params_b = _estimate_params_dense(p)
 
+    p.architecture_family = _detect_architecture_family(raw, p.architecture)
     return p
 
 

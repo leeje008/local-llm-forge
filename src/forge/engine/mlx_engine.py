@@ -19,6 +19,11 @@ class GenerationResult:
     total_seconds: float = 0.0
     speculative_used: bool = False
     prompt_cache_used: bool = False
+    prefix_cache_hit: bool = False
+    prefix_tokens_saved: int = 0
+    kv_compression: str = "none"
+    kv_eviction: str = "none"
+    attention_backend: str = "default"
 
 
 @dataclass
@@ -37,8 +42,22 @@ class EngineConfig:
     kv_bits: int | None = None  # 8 for FP8 KV cache quantization
     kv_group_size: int = 64
     max_kv_size: int | None = None  # Sliding window limit
+    # KV cache compression (Phase 6)
+    kv_compression: str = "none"   # "none", "turbo", "fp8"
+    kv_eviction: str = "none"      # "none", "sliding", "h2o", "ada_kv"
+    kv_budget_ratio: float = 0.2   # For H2O/Ada-KV: fraction of tokens to keep
+    # Prefix cache (Phase 6)
+    enable_prefix_cache: bool = False
+    prefix_cache_memory_mb: float = 2048.0
     # Prompt cache
     prompt_cache_path: str | None = None
+    # PMPD — prefill FP16, decode INT4 (Phase 10.4, experimental).
+    # Control-plane flag only; the actual quant switch is orchestrated by
+    # forge.engine.scheduler.configure_pmpd().
+    pmpd_mode: bool = False
+    # Phase 12: Attention backend selection
+    attention_backend: str = "default"  # "default" | "mfa" | "auto"
+    mfa_min_seq_len: int = 2048  # auto mode: use MFA when seq_len >= this
 
 
 class MLXEngine:
@@ -50,6 +69,14 @@ class MLXEngine:
         self._tokenizer = None
         self._draft_model = None
         self._loaded = False
+        # Phase 6: KV cache managers
+        self._prefix_cache = None
+        self._h2o_manager = None
+        self._ada_kv_manager = None
+        self._turbo_compressor = None
+        # Phase 12: Attention backend state
+        self._mfa_available: bool | None = None
+        self._attention_backend_active: str = "default"
 
     def load(self) -> None:
         """Load model (and optional draft model) into memory."""
@@ -60,13 +87,89 @@ class MLXEngine:
         if self.config.draft_model_path:
             self._draft_model, _ = mlx_lm.load(self.config.draft_model_path)
 
+        # Phase 6: Initialize KV cache managers
+        self._init_kv_managers()
+
         self._loaded = True
+
+        # Phase 12: Resolve attention backend after model is loaded
+        self._attention_backend_active = self._init_attention_backend()
+
+    def _init_attention_backend(self) -> str:
+        """Resolve the active attention backend based on config and availability.
+
+        In ``auto`` mode, the returned value indicates whether MFA *may* be used;
+        the final per-call decision is additionally gated by sequence length via
+        :meth:`_should_use_mfa` (see ``mfa_min_seq_len``).
+        """
+        requested = self.config.attention_backend
+        if requested == "default":
+            return "default"
+
+        try:
+            import mlx_mfa  # noqa: F401
+            self._mfa_available = True
+        except Exception:
+            self._mfa_available = False
+
+        if requested == "mfa":
+            if self._mfa_available:
+                print("[forge.engine] attention backend: mlx-mfa (metal-flash-attention) enabled")
+                return "mfa"
+            return "default"  # silent fallback
+        if requested == "auto":
+            return "mfa" if self._mfa_available else "default"
+        return "default"
+
+    def _should_use_mfa(self, seq_len: int) -> bool:
+        """Per-call decision on whether to dispatch MFA kernel."""
+        if self._attention_backend_active == "default" or not self._mfa_available:
+            return False
+        if self.config.attention_backend == "mfa":
+            return True
+        if self.config.attention_backend == "auto":
+            return seq_len >= self.config.mfa_min_seq_len
+        return False
+
+    def _init_kv_managers(self) -> None:
+        """Initialize KV cache compression and eviction managers."""
+        cfg = self.config
+
+        # TurboQuant compressor
+        if cfg.kv_compression == "turbo":
+            from forge.engine.kv_cache import TurboQuantCompressor, TurboQuantConfig
+            self._turbo_compressor = TurboQuantCompressor(TurboQuantConfig(bits=3))
+
+        # H2O eviction
+        if cfg.kv_eviction == "h2o":
+            from forge.engine.kv_cache import H2OConfig, H2OEvictionManager
+            self._h2o_manager = H2OEvictionManager(
+                H2OConfig(budget_ratio=cfg.kv_budget_ratio)
+            )
+
+        # Ada-KV (per-head adaptive H2O)
+        if cfg.kv_eviction == "ada_kv":
+            from forge.engine.kv_cache import AdaKVConfig, AdaKVManager
+            self._ada_kv_manager = AdaKVManager(
+                AdaKVConfig(total_budget_ratio=cfg.kv_budget_ratio)
+            )
+
+        # Prefix cache
+        if cfg.enable_prefix_cache:
+            from forge.engine.prefix_cache import RadixPrefixCache
+            self._prefix_cache = RadixPrefixCache(
+                max_memory_mb=cfg.prefix_cache_memory_mb
+            )
 
     def unload(self) -> None:
         """Release model from memory."""
         self._model = None
         self._tokenizer = None
         self._draft_model = None
+        self._prefix_cache = None
+        self._h2o_manager = None
+        self._ada_kv_manager = None
+        self._turbo_compressor = None
         self._loaded = False
         import gc
         gc.collect()
@@ -124,6 +227,7 @@ class MLXEngine:
         result.total_seconds = elapsed
         result.ttft_seconds = (first_token_time - start) if first_token_time else 0
         result.tps = result.tokens_generated / elapsed if elapsed > 0 else 0
+        result.attention_backend = self._attention_backend_active
 
         return result
 
@@ -169,6 +273,7 @@ class MLXEngine:
             total_seconds=elapsed,
             tps=count / elapsed if elapsed > 0 else 0,
             speculative_used=self._draft_model is not None,
+            attention_backend=self._attention_backend_active,
         )
 
     def benchmark(

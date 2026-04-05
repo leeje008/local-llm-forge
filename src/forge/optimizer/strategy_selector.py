@@ -33,6 +33,12 @@ class OptimizationStrategy:
     expert_cache_size: int | None = None  # MoE only
     mixed_quant_recipe: str | None = None  # e.g. "mixed_3_6"
 
+    # Phase 8.5 — Compound pipeline
+    # Ordered list of stages to run sequentially. Example:
+    #   ["asvd_rank_reduction", "layer_prune", "gsr_rotation", "quantize"]
+    # Stages not recognized by the runtime are treated as no-ops with a log.
+    compound_pipeline: list[str] = field(default_factory=list)
+
     # Estimates
     estimated_tps: float = 0.0
     estimated_memory_gb: float = 0.0
@@ -87,6 +93,57 @@ def _find_draft_model(model: ModelProfile) -> str | None:
     return "HuggingFaceTB/SmolLM2-360M"
 
 
+def build_compound_pipeline(
+    model: ModelProfile,
+    hardware: HardwareProfile,
+    quant_method: str = "mlx_native",
+) -> list[str]:
+    """Construct an ordered compound pipeline for Phase 8.5.
+
+    Default pipeline composes ASVD rank reduction → layer pruning →
+    rotation (GSR) → final quantization. ASVD and layer-prune are currently
+    no-op stubs in the runtime (they log a message and return the model
+    unchanged) but participate in the dataclass so downstream UIs and the
+    deployer can show the intended plan.
+    """
+    stages: list[str] = []
+
+    # Rank reduction helps oversized dense models more than MoE (which has
+    # routed sparsity already).
+    if model.model_type != "moe" and model.total_params_b >= 13.0:
+        stages.append("asvd_rank_reduction")
+
+    # Layer pruning is only safe for large transformers with redundant layers.
+    if model.num_layers and model.num_layers >= 32:
+        stages.append("layer_prune")
+
+    # Rotation pre-pass (Phase 8.3) is cheap and helps any weight distribution.
+    stages.append("gsr_rotation")
+
+    # Final quantization stage — named by the chosen method so the executor
+    # can dispatch to quantizer.quantize(method=...).
+    stages.append(f"quantize:{quant_method}")
+    return stages
+
+
+# Phase 8.5 — Pipeline stage stubs. These log their invocation and return the
+# model unchanged. Real implementations land in subsequent phases.
+
+def run_asvd_rank_reduction(model_path: str, output_dir: str) -> tuple[bool, str]:
+    """Stub: ASVD (Activation-aware SVD) rank reduction.
+
+    Real implementation would compute activation-weighted SVD and truncate
+    low-energy singular values to compress weight matrices. For now this is
+    a pass-through that signals the stage executed.
+    """
+    return True, f"[asvd_rank_reduction] stub — pass-through ({model_path})"
+
+
+def run_layer_prune(model_path: str, output_dir: str) -> tuple[bool, str]:
+    """Stub: structured layer pruning (ShortGPT-style block importance)."""
+    return True, f"[layer_prune] stub — pass-through ({model_path})"
+
+
 def select(
     model: ModelProfile,
     hardware: HardwareProfile,
@@ -94,6 +151,8 @@ def select(
     enable_speculative: bool = False,
     force_quant: str | None = None,
     force_runtime: str | None = None,
+    enable_compound: bool = False,
+    quant_method_override: str | None = None,
 ) -> OptimizationStrategy:
     """Select the optimal optimization strategy."""
     strategy = OptimizationStrategy()
@@ -192,6 +251,20 @@ def select(
             strategy.estimated_quality_pct = est.quality_pct
             break
 
+    # Phase 8 — Override quant method if caller supplied a next-gen choice
+    if quant_method_override:
+        strategy.quant_method = quant_method_override
+        reasoning.append(f"Quant method overridden: {quant_method_override}")
+
+    # Phase 8.5 — Compound pipeline
+    if enable_compound:
+        strategy.compound_pipeline = build_compound_pipeline(
+            model, hardware, quant_method=strategy.quant_method,
+        )
+        reasoning.append(
+            f"Compound pipeline enabled: {' → '.join(strategy.compound_pipeline)}"
+        )
+
     strategy.reasoning = reasoning
     return strategy
 
@@ -220,6 +293,8 @@ def format_report(s: OptimizationStrategy) -> str:
         lines.append(f"    Draft Model:      {s.draft_model}")
     if s.expert_cache_size:
         lines.append(f"    Expert Cache:     {s.expert_cache_size} entries")
+    if s.compound_pipeline:
+        lines.append(f"    Compound Pipeline: {' → '.join(s.compound_pipeline)}")
     lines.extend([
         "",
         "  Estimates:",
