@@ -435,6 +435,8 @@ def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
         kv_budget_ratio=kv_budget,
         enable_prefix_cache=prefix_cache,
         attention_backend=attention,
+        ngram_spec=ngram_spec,
+        use_adaptive_k=adaptive_k,
     )
 
     # Phase 12 Tier S — attention backend (mlx-mfa)

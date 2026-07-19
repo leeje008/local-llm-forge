@@ -24,6 +24,8 @@ class GenerationResult:
     kv_compression: str = "none"
     kv_eviction: str = "none"
     attention_backend: str = "default"
+    ngram_acceptance_rate: float = 0.0
+    ngram_tokens_per_step: float = 0.0
 
 
 @dataclass
@@ -58,6 +60,12 @@ class EngineConfig:
     # Phase 12: Attention backend selection
     attention_backend: str = "default"  # "default" | "mfa" | "auto"
     mfa_min_seq_len: int = 2048  # auto mode: use MFA when seq_len >= this
+    # Phase 7: N-gram self-speculative decoding (opt-in path; default unchanged)
+    ngram_spec: bool = False
+    ngram_order: int = 3
+    ngram_max_draft: int = 5
+    use_adaptive_k: bool = True
+    adaptive_initial_k: int = 3
 
 
 class MLXEngine:
@@ -183,6 +191,15 @@ class MLXEngine:
         if not self._loaded:
             self.load()
 
+        # Phase 7: opt-in N-gram self-speculative path. The default generation
+        # path below is left untouched when ngram_spec is disabled.
+        if self.config.ngram_spec:
+            return self._generate_ngram_spec(
+                prompt,
+                kwargs.get("max_tokens", self.config.max_tokens),
+                kwargs.get("temperature", self.config.temperature),
+            )
+
         import mlx_lm
 
         max_tokens = kwargs.get("max_tokens", self.config.max_tokens)
@@ -231,10 +248,77 @@ class MLXEngine:
 
         return result
 
+    def _generate_ngram_spec(
+        self, prompt: str, max_tokens: int, temperature: float
+    ) -> GenerationResult:
+        """N-gram self-speculative greedy decode (opt-in ``--ngram-spec`` path).
+
+        Runs a custom decode loop driven by :class:`NGramSpeculativeDecoder`
+        (N-gram drafting + Adaptive-K) against the real MLX model. Verification
+        is greedy, so the output matches plain greedy decoding while accepting
+        matched draft tokens. ``temperature`` is accepted for interface parity
+        but this path is greedy by construction.
+        """
+        import mlx.core as mx
+
+        from forge.engine.speculative import (
+            AdaptiveKConfig,
+            AdaptiveKController,
+            NGramDrafter,
+            NGramSpeculativeDecoder,
+        )
+
+        cfg = self.config
+        _ = temperature  # greedy path; kept for signature parity
+
+        prompt_ids = list(self._tokenizer.encode(prompt))
+
+        def forward_fn(seq_tokens: list[int]):
+            logits = self._model(mx.array([seq_tokens]))  # [1, L, vocab]
+            return logits[0]
+
+        decoder = NGramSpeculativeDecoder(
+            ngram=NGramDrafter(n=cfg.ngram_order, max_draft=cfg.ngram_max_draft),
+            adaptive_k=AdaptiveKController(
+                AdaptiveKConfig(initial_k=cfg.adaptive_initial_k)
+            ),
+            use_adaptive_k=cfg.use_adaptive_k,
+            fixed_k=cfg.num_draft_tokens,
+        )
+
+        eos_id = getattr(self._tokenizer, "eos_token_id", None)
+        start = time.monotonic()
+        spec = decoder.generate(
+            prompt_ids, forward_fn, max_tokens=max_tokens, eos_token_id=eos_id
+        )
+        elapsed = time.monotonic() - start
+
+        return GenerationResult(
+            text=self._tokenizer.decode(spec.tokens),
+            tokens_generated=len(spec.tokens),
+            total_seconds=elapsed,
+            tps=len(spec.tokens) / elapsed if elapsed > 0 else 0.0,
+            speculative_used=True,
+            attention_backend=self._attention_backend_active,
+            ngram_acceptance_rate=round(spec.acceptance_rate, 3),
+            ngram_tokens_per_step=round(spec.avg_tokens_per_step, 3),
+        )
+
     def stream(self, prompt: str, **kwargs) -> Generator[str, None, GenerationResult]:
         """Stream tokens as they're generated. Yields text chunks."""
         if not self._loaded:
             self.load()
+
+        # Phase 7: opt-in N-gram self-speculative path. Streams the completed
+        # speculative result as a single chunk; the default path is unchanged.
+        if self.config.ngram_spec:
+            result = self._generate_ngram_spec(
+                prompt,
+                kwargs.get("max_tokens", self.config.max_tokens),
+                kwargs.get("temperature", self.config.temperature),
+            )
+            yield result.text
+            return result
 
         import mlx_lm
 
