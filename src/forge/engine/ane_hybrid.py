@@ -14,9 +14,6 @@ Note: This is experimental. ANE support for large LLMs (>8B) is limited.
 
 from __future__ import annotations
 
-import subprocess
-import sys
-import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -64,8 +61,6 @@ def assess_ane_compatibility(
     # - CoreML has a ~4GB model size limit for ANE execution
     # - ANE works best with batch prefill, not single-token decode
     # - Models > 8B have limited ANE support as of 2026
-
-    model_size_4bit_gb = model_params_b * 0.5 * 1.05  # 4-bit estimate
 
     if model_params_b <= 1.0:
         # Small models: full ANE viable

@@ -70,8 +70,6 @@ def route(
         model_params_b=model.total_params_b,
         available_memory_gb=hardware.usable_memory_gb,
     )
-    safe_name = model.model_id.replace("/", "--")
-
     # ── Stage 1: Full Precision (FP16) ──
     fp16_est = _find_estimate(budget, "fp16")
     if fp16_est and fp16_est.fits_with_kv:
@@ -222,7 +220,11 @@ def format_route_report(decision: RouteDecision) -> str:
         status = "✓" if r.feasible else "✗"
         tps = f"~{r.estimated_tps:.0f} tok/s" if r.estimated_tps > 0 else ""
         mem = f"~{r.estimated_memory_gb:.0f}GB" if r.estimated_memory_gb > 0 else ""
-        is_rec = " ←" if decision.recommended and r.route == decision.recommended.route and r.feasible else ""
+        is_rec = (
+            " ←"
+            if decision.recommended and r.route == decision.recommended.route and r.feasible
+            else ""
+        )
         lines.append(f"  [{i}] {r.label:<35} {status:<6} {tps:>10} {mem:>10} {r.notes}{is_rec}")
         if r.feasible and r.command:
             lines.append(f"      → {r.command}")

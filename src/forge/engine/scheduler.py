@@ -39,10 +39,9 @@ from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generator, Iterable
+from typing import Any, Callable, Generator
 
 from forge.engine.mlx_engine import EngineConfig, GenerationResult, MLXEngine
-
 
 # ---------------------------------------------------------------------------
 # 10.1 Chunked Prefill (Sarathi 2403.02310)

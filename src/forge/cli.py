@@ -121,7 +121,10 @@ def route(model_id: str, trust_remote_code: bool):
     decision = do_route(model, hw, budget)
 
     console.print()
-    console.print(f"[bold]{model_id}[/bold] — {model.total_params_b:.1f}B params, {model.model_type.upper()}")
+    console.print(
+        f"[bold]{model_id}[/bold] — {model.total_params_b:.1f}B params, "
+        f"{model.model_type.upper()}"
+    )
     console.print()
     console.print(format_route_report(decision))
 
@@ -137,7 +140,10 @@ def route(model_id: str, trust_remote_code: bool):
 )
 @click.option("--output", "-o", type=click.Path(), default=None, help="Output directory")
 @click.option("--speculative", is_flag=True, help="Enable speculative decoding")
-@click.option("--mixed-precision", "mixed_prec", is_flag=True, help="Per-layer mixed-precision quantization")
+@click.option(
+    "--mixed-precision", "mixed_prec", is_flag=True,
+    help="Per-layer mixed-precision quantization",
+)
 @click.option(
     "--compound",
     is_flag=True,
@@ -254,7 +260,9 @@ def optimize(
                 ok_s, msg_s = run_layer_prune(model_id, str(output_dir))
                 console.print(f"  {msg_s}")
             elif stage == "gsr_rotation":
-                console.print(f"  [gsr_rotation] queued — applied via quant_method='gsr' or as pre-pass")
+                console.print(
+                    "  [gsr_rotation] queued — applied via quant_method='gsr' or as pre-pass"
+                )
             elif stage.startswith("quantize:"):
                 console.print(f"  [quantize] method={stage.split(':', 1)[1]}")
 
@@ -266,7 +274,11 @@ def optimize(
             method="mixed_precision", size_gb=_dir_size_gb(output_dir), success=True,
         )
     else:
-        with console.status(f"[bold green]Converting & quantizing ({strategy.quant_method} {strategy.quantization})..."):
+        status_msg = (
+            f"[bold green]Converting & quantizing "
+            f"({strategy.quant_method} {strategy.quantization})..."
+        )
+        with console.status(status_msg):
             from forge.optimizer.quantizer import quantize
 
             result = quantize(
@@ -284,7 +296,11 @@ def optimize(
 
     # Phase 9.6: Per-expert asymmetric quantization for MoE models
     if per_expert_quant and model.model_type == "moe":
-        with console.status("[bold green]Phase 9.6: Re-quantizing experts asymmetrically (shared=4-bit, routed=2-bit)..."):
+        status_msg = (
+            "[bold green]Phase 9.6: Re-quantizing experts asymmetrically "
+            "(shared=4-bit, routed=2-bit)..."
+        )
+        with console.status(status_msg):
             from forge.optimizer.quantizer import quantize_per_expert_asymmetric
 
             pe_result = quantize_per_expert_asymmetric(
@@ -337,7 +353,7 @@ def optimize(
             console.print(f"  Tokens:    {metrics.tokens_generated}")
 
     console.print()
-    console.print(f"[bold green]Optimization complete!")
+    console.print("[bold green]Optimization complete!")
     console.print(f"  Run: forge deploy {output_dir}")
 
 
@@ -345,32 +361,59 @@ def optimize(
 @click.argument("model_path", type=click.Path(exists=True))
 @click.argument("prompt")
 @click.option("--max-tokens", type=int, default=256)
-@click.option("--draft", type=click.Path(), default=None, help="Draft model for speculative decoding")
+@click.option(
+    "--draft", type=click.Path(), default=None,
+    help="Draft model for speculative decoding",
+)
 @click.option("--auto-draft", is_flag=True, help="Auto-select draft model")
 @click.option("--redrafter", is_flag=True, help="Use ReDrafter for speculative decoding")
 @click.option("--temperature", type=float, default=0.7)
-@click.option("--kv-bits", type=click.Choice(["4", "8"]), default=None, help="KV cache quantization bits")
+@click.option(
+    "--kv-bits", type=click.Choice(["4", "8"]), default=None,
+    help="KV cache quantization bits",
+)
 @click.option("--max-kv-size", type=int, default=None, help="Sliding window KV cache limit")
 @click.option("--kv-compress", type=click.Choice(["none", "turbo", "fp8"]), default="none",
               help="KV cache compression method (turbo=TurboQuant 5.5x)")
-@click.option("--kv-eviction", type=click.Choice(["none", "sliding", "h2o", "ada_kv"]), default="none",
-              help="KV cache eviction policy (h2o=Heavy-Hitter, ada_kv=per-head adaptive)")
-@click.option("--kv-budget", type=float, default=0.2, help="KV eviction budget ratio (0.2=keep 20%%)")
+@click.option(
+    "--kv-eviction", type=click.Choice(["none", "sliding", "h2o", "ada_kv"]),
+    default="none",
+    help="KV cache eviction policy (h2o=Heavy-Hitter, ada_kv=per-head adaptive)",
+)
+@click.option(
+    "--kv-budget", type=float, default=0.2,
+    help="KV eviction budget ratio (0.2=keep 20%%)",
+)
 @click.option("--prefix-cache/--no-prefix-cache", default=False, help="Enable radix prefix caching")
 @click.option("--ngram-spec", is_flag=True, help="N-gram self-speculation (no draft model needed)")
 @click.option("--tree-spec", is_flag=True, help="Tree-based speculative verification")
 @click.option("--adaptive-k/--no-adaptive-k", default=True, help="Adaptive draft length")
 @click.option("--pearl/--no-pearl", default=True, help="PEARL pre/post-verify scheduling")
-@click.option("--eagle-head", type=click.Path(), default=None, help="EAGLE-3 head directory or HF repo (Phase 7.5)")
-@click.option("--cas-spec", is_flag=True, help="CAS-Spec cascade self-speculation with DyTC (Phase 12)")
-@click.option("--lava-eviction", is_flag=True, help="LAVa unified layer+head KV eviction (Phase 12)")
-@click.option("--xkv-rank", type=int, default=None, help="xKV cross-layer SVD rank for KV sharing (Phase 12)")
+@click.option(
+    "--eagle-head", type=click.Path(), default=None,
+    help="EAGLE-3 head directory or HF repo (Phase 7.5)",
+)
+@click.option(
+    "--cas-spec", is_flag=True,
+    help="CAS-Spec cascade self-speculation with DyTC (Phase 12)",
+)
+@click.option(
+    "--lava-eviction", is_flag=True,
+    help="LAVa unified layer+head KV eviction (Phase 12)",
+)
+@click.option(
+    "--xkv-rank", type=int, default=None,
+    help="xKV cross-layer SVD rank for KV sharing (Phase 12)",
+)
 @click.option("--attention", type=click.Choice(["default", "mfa", "auto"]), default="default",
               help="Attention backend: mfa=mlx-mfa Metal FlashAttention (Phase 12)")
 @click.option("--grammar", type=click.Path(), default=None,
               help="Grammar/JSON-Schema file for structured decoding (Phase 12, XGrammar-2)")
-@click.option("--grammar-backend", type=click.Choice(["auto", "xgrammar", "llguidance", "outlines", "dummy"]),
-              default="auto", help="Structured decoding backend (Phase 12)")
+@click.option(
+    "--grammar-backend",
+    type=click.Choice(["auto", "xgrammar", "llguidance", "outlines", "dummy"]),
+    default="auto", help="Structured decoding backend (Phase 12)",
+)
 @click.option("--stream/--no-stream", default=True)
 def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
         auto_draft: bool, redrafter: bool, temperature: float, kv_bits: str | None,
@@ -443,7 +486,10 @@ def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
     if attention != "default":
         from forge.engine.attention_backend import detect_mlx_mfa
         ok, msg = detect_mlx_mfa()
-        console.print(f"[blue]Attention backend: {attention} (mlx-mfa {'ready' if ok else 'unavailable: ' + msg})")
+        console.print(
+            f"[blue]Attention backend: {attention} "
+            f"(mlx-mfa {'ready' if ok else 'unavailable: ' + msg})"
+        )
 
     # Phase 12 Tier S — LAVa eviction (overrides kv_eviction)
     if lava_eviction:
@@ -456,14 +502,19 @@ def run(model_path: str, prompt: str, max_tokens: int, draft: str | None,
     # Phase 12 Tier S — structured decoding
     if grammar:
         from forge.engine.structured_decoding import (
-            GrammarCompiler, StructuredDecodingConfig, detect_structured_backends,
-            load_grammar_from_file, select_backend,
+            StructuredDecodingConfig,
+            detect_structured_backends,
+            load_grammar_from_file,
+            select_backend,
         )
         grammar_spec = load_grammar_from_file(grammar)
         sd_config = StructuredDecodingConfig(grammar=grammar_spec, backend=grammar_backend)
         backends = detect_structured_backends()
         chosen = select_backend(sd_config)
-        console.print(f"[blue]Structured decoding: grammar={grammar_spec.kind} backend={chosen} available={backends}")
+        console.print(
+            f"[blue]Structured decoding: grammar={grammar_spec.kind} "
+            f"backend={chosen} available={backends}"
+        )
 
     # Phase 12 Tier S — CAS-Spec cascade
     if cas_spec:
@@ -770,7 +821,10 @@ def cache_list(model_path: str):
 )
 @click.option("--plan-method", type=click.Choice(["remove", "merge"]), default="remove",
               help="How to apply the plan: remove experts or merge them")
-@click.option("--num-samples", type=int, default=20, help="Calibration prompts (activation/hybrid only)")
+@click.option(
+    "--num-samples", type=int, default=20,
+    help="Calibration prompts (activation/hybrid only)",
+)
 @click.option("--save-plan", type=click.Path(), default=None, help="Save pruning plan JSON")
 def expert_prune(
     model_id: str,
@@ -795,10 +849,16 @@ def expert_prune(
         model = inspect(model_id, trust_remote_code=True)
 
     if model.model_type != "moe":
-        console.print(f"[red]{model_id} is not a MoE model (type={model.model_type}). Expert pruning requires MoE.")
+        console.print(
+            f"[red]{model_id} is not a MoE model (type={model.model_type}). "
+            f"Expert pruning requires MoE."
+        )
         sys.exit(1)
 
-    console.print(f"[blue]MoE model: {model.num_experts} experts, {model.num_active_experts} active/token")
+    console.print(
+        f"[blue]MoE model: {model.num_experts} experts, "
+        f"{model.num_active_experts} active/token"
+    )
     console.print(f"[blue]Scoring method: {method}")
 
     from forge.optimizer.expert_pruner import (
@@ -871,7 +931,10 @@ def expert_prune(
 @click.argument("model_id")
 @click.option("--rank", type=int, default=8, help="Shared-basis rank for joint SVD")
 @click.option("--groups", type=int, default=2, help="Number of expert groups (per-layer partition)")
-@click.option("--output", "-o", type=click.Path(), default=None, help="Output .subm state-dict path")
+@click.option(
+    "--output", "-o", type=click.Path(), default=None,
+    help="Output .subm state-dict path",
+)
 @click.option("--center/--no-center", default=False, help="Center weights per group before SVD")
 def expert_merge(model_id: str, rank: int, groups: int, output: str | None, center: bool):
     """MoE-SVD: merge MoE experts into a shared low-rank basis.
@@ -886,9 +949,9 @@ def expert_merge(model_id: str, rank: int, groups: int, output: str | None, cent
 
     with console.status("[bold blue]Loading MLX model..."):
         try:
-            from mlx_lm import load as mlx_load  # type: ignore[import-untyped]
             import mlx.core as mx
             import numpy as np
+            from mlx_lm import load as mlx_load  # type: ignore[import-untyped]
         except ImportError as e:
             console.print(f"[red]Missing dependency: {e}")
             sys.exit(1)
@@ -937,7 +1000,10 @@ def expert_merge(model_id: str, rank: int, groups: int, output: str | None, cent
         console.print("[red]No expert weight matrices found. Is this an MoE model?")
         sys.exit(1)
 
-    console.print(f"[blue]Found experts in {len(layer_experts)} layer(s). Merging layer 0 as reference.")
+    console.print(
+        f"[blue]Found experts in {len(layer_experts)} layer(s). "
+        f"Merging layer 0 as reference."
+    )
 
     # Reference run: fit on the first layer. Full-model merging would loop.
     from forge.optimizer.expert_merger import (
@@ -1002,7 +1068,10 @@ def eval_model(model_path: str, suite: str, limit: int | None, save: str | None)
 @main.command()
 @click.argument("model_path", type=click.Path(exists=True))
 @click.option("--tokens", type=int, default=200, help="Tokens to generate")
-@click.option("--prompt", default="Explain the concept of recursion in computer science with examples.")
+@click.option(
+    "--prompt",
+    default="Explain the concept of recursion in computer science with examples.",
+)
 def profile(model_path: str, tokens: int, prompt: str):
     """Profile token-level latency distribution.
 
@@ -1042,10 +1111,16 @@ def sensitivity(model_path: str, target_bits: float):
 
 @main.command(name="long-context")
 @click.argument("model_id_or_path")
-@click.option("--target-context", type=int, default=1_048_576, help="Target context length in tokens")
+@click.option(
+    "--target-context", type=int, default=1_048_576,
+    help="Target context length in tokens",
+)
 @click.option("--memory-gb", type=float, default=48.0, help="Available memory budget (GB)")
 @click.option("--weights-gb", type=float, default=4.0, help="Model weights size (GB, 7B 4-bit ≈ 4)")
-@click.option("--kv-compression", type=float, default=5.5, help="KV compression ratio (TurboQuant=5.5)")
+@click.option(
+    "--kv-compression", type=float, default=5.5,
+    help="KV compression ratio (TurboQuant=5.5)",
+)
 @click.option("--num-layers", type=int, default=32)
 @click.option("--num-kv-heads", type=int, default=4)
 @click.option("--head-dim", type=int, default=128)
@@ -1074,7 +1149,7 @@ def long_context(model_id_or_path: str, target_context: int, memory_gb: float,
     else:
         from forge.engine.long_context import DCAConfig
         dca_config = DCAConfig(max_context_length=target_context)
-        console.print(f"[yellow]Unknown model — using default DCA config")
+        console.print("[yellow]Unknown model — using default DCA config")
 
     feas = estimate_long_context_feasibility(
         num_layers=num_layers,

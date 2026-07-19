@@ -12,9 +12,7 @@ Phase 7 enhancements:
 from __future__ import annotations
 
 import math
-from collections import defaultdict
 from dataclasses import dataclass, field
-from pathlib import Path
 
 # Known draft model mappings: architecture → small model
 DRAFT_MODELS: dict[str, list[str]] = {
@@ -943,7 +941,7 @@ def format_speculative_report(config: SpeculativeConfig) -> str:
     if config.use_adaptive_k:
         lines.append(f"  Adaptive K:   initial={config.initial_k}")
     if config.use_pearl:
-        lines.append(f"  PEARL:        pre-verify + post-verify enabled")
+        lines.append("  PEARL:        pre-verify + post-verify enabled")
 
     return "\n".join(lines)
 

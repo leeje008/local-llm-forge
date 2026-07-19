@@ -28,12 +28,11 @@ from __future__ import annotations
 import shutil
 import subprocess
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Generator
 
 import mlx.core as mx
-
 
 # ---------------------------------------------------------------------------
 # Config
@@ -160,7 +159,9 @@ def ternary_quantize(
     )
 
 
-def ternary_quantize_module(state_dict: dict[str, mx.array], cfg: BitNetConfig | None = None) -> dict[str, TernaryTensor | mx.array]:
+def ternary_quantize_module(
+    state_dict: dict[str, mx.array], cfg: BitNetConfig | None = None
+) -> dict[str, TernaryTensor | mx.array]:
     """Quantize every 2-D weight in a state dict; leave embeddings/norms alone.
 
     This mirrors the BitNet recipe where only linear projections inside
@@ -242,7 +243,9 @@ class BitNetEngine:
 
     # -- generation -------------------------------------------------------
 
-    def _build_cmd(self, prompt: str, max_tokens: int, temperature: float, top_p: float) -> list[str]:
+    def _build_cmd(
+        self, prompt: str, max_tokens: int, temperature: float, top_p: float
+    ) -> list[str]:
         assert self._binary is not None
         return [
             self._binary,

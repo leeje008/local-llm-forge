@@ -352,9 +352,9 @@ def quantize_any4(
     manifest JSON summarizing the run.
     """
     try:
+        import mlx.core as mx
         import numpy as np
         from mlx_lm import load  # type: ignore[import-untyped]
-        import mlx.core as mx
     except ImportError as e:
         return QuantResult(
             output_path=output_dir, quant="any4", method="any4",
@@ -555,8 +555,8 @@ def quantize_gsr(
     downstream tools can choose whether to fuse).
     """
     try:
-        import numpy as np
         import mlx.core as mx
+        import numpy as np
         from mlx_lm import load  # type: ignore[import-untyped]
     except ImportError as e:
         return QuantResult(
@@ -689,8 +689,8 @@ def quantize_d2quant(
     alongside for the runtime to honor if it supports mixed granularity).
     """
     try:
-        import numpy as np
         import mlx.core as mx
+        import numpy as np
         from mlx_lm import load  # type: ignore[import-untyped]
     except ImportError as e:
         return QuantResult(
@@ -858,7 +858,6 @@ def quantize_per_expert_asymmetric(
     `quantize_mlx` has run). It edits weights in place and saves back.
     """
     try:
-        import mlx.core as mx
         import mlx.nn as nn
         from mlx_lm import load  # type: ignore[import-untyped]
         from mlx_lm.utils import save_weights  # type: ignore[import-untyped]

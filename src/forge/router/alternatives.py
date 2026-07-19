@@ -7,9 +7,7 @@ from the same family or quality-equivalent alternatives.
 from __future__ import annotations
 
 from forge.analyzer.hardware_profiler import HardwareProfile
-from forge.analyzer.memory_calculator import calc_theoretical_tps, calc_weight_memory
 from forge.analyzer.model_inspector import ModelProfile
-
 
 # Model family alternative database
 # Structure: architecture → size_tier → list of (model_id, params_b, reason)
@@ -124,7 +122,11 @@ def find_alternatives(
             continue
         weight_4bit = params_b * 0.5 * 1.05  # rough 4-bit estimate
         if weight_4bit < hardware.usable_memory_gb * 0.85:
-            tps = (hardware.memory_bandwidth_gbs / weight_4bit) * 0.37 if hardware.memory_bandwidth_gbs > 0 else 0
+            tps = (
+                (hardware.memory_bandwidth_gbs / weight_4bit) * 0.37
+                if hardware.memory_bandwidth_gbs > 0
+                else 0
+            )
             results.append({
                 "model_id": model_id,
                 "name": model_id.split("/")[-1],
@@ -143,7 +145,11 @@ def find_alternatives(
                 continue
             weight_4bit = total_p * 0.5 * 1.05
             if weight_4bit < hardware.usable_memory_gb * 0.85:
-                tps = (hardware.memory_bandwidth_gbs / (active_p * 0.5 * 1.05)) * 0.37 if hardware.memory_bandwidth_gbs > 0 else 0
+                tps = (
+                    (hardware.memory_bandwidth_gbs / (active_p * 0.5 * 1.05)) * 0.37
+                    if hardware.memory_bandwidth_gbs > 0
+                    else 0
+                )
                 results.append({
                     "model_id": moe_id,
                     "name": moe_id.split("/")[-1] + f" (MoE, {active_p:.1f}B active)",
@@ -162,7 +168,11 @@ def find_alternatives(
                 continue
             weight_4bit = fb_params * 0.5 * 1.05
             if weight_4bit < hardware.usable_memory_gb * 0.85:
-                tps = (hardware.memory_bandwidth_gbs / weight_4bit) * 0.37 if hardware.memory_bandwidth_gbs > 0 else 0
+                tps = (
+                    (hardware.memory_bandwidth_gbs / weight_4bit) * 0.37
+                    if hardware.memory_bandwidth_gbs > 0
+                    else 0
+                )
                 results.append({
                     "model_id": fb_id,
                     "name": fb_id.split("/")[-1],

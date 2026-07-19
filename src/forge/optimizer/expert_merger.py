@@ -112,7 +112,6 @@ def merge_experts_svd(
             f"All experts must share the same shape; got {shapes}"
         )
     out_dim, in_dim = mats[0].shape
-    num_experts = len(mats)
 
     # Optionally center around per-group mean
     mean = None

@@ -16,7 +16,6 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-
 # Standard benchmark tasks
 BENCHMARK_SUITES = {
     "quick": ["hellaswag", "arc_easy"],
@@ -169,8 +168,14 @@ def _fallback_eval(
 
     eval_prompts = {
         "math": ("What is 15 * 23?", "345"),
-        "reasoning": ("If all cats are animals, and Whiskers is a cat, is Whiskers an animal?", "yes"),
-        "code": ("Write a Python function that returns the sum of a list: def sum_list(lst):", "return sum"),
+        "reasoning": (
+            "If all cats are animals, and Whiskers is a cat, is Whiskers an animal?",
+            "yes",
+        ),
+        "code": (
+            "Write a Python function that returns the sum of a list: def sum_list(lst):",
+            "return sum",
+        ),
         "knowledge": ("What is the capital of France?", "Paris"),
         "logic": ("Complete: 2, 4, 8, 16, __", "32"),
     }

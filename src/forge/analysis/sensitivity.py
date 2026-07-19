@@ -54,7 +54,6 @@ def analyze_weight_sensitivity(
 
     try:
         import mlx.core as mx
-        import mlx.nn as nn
         from mlx_lm import load
 
         model, _ = load(str(model_path))
@@ -95,8 +94,6 @@ def analyze_weight_sensitivity(
 
         # Score sensitivity: higher range + more outliers = more sensitive
         for i, stats in enumerate(layer_stats):
-            sensitivity_score = stats["range"] * (1 + stats["outlier_ratio"] * 10)
-
             ls = LayerSensitivity(
                 layer_idx=i,
                 layer_name=stats["name"],
@@ -115,7 +112,7 @@ def analyze_weight_sensitivity(
                     layer.layer_idx, 4
                 )
 
-    except Exception as e:
+    except Exception:
         report.layers = []
 
     report.analysis_time_seconds = time.monotonic() - start
@@ -132,14 +129,13 @@ def _allocate_bits(
     Strategy: Sort by sensitivity (outlier_ratio + weight_range),
     assign higher bits to more sensitive layers.
     """
-    available_bits = [2, 3, 4, 6, 8]
     n = len(layers)
 
     # Score each layer
     scores = []
-    for l in layers:
-        score = l.weight_range * (1 + l.outlier_ratio * 10)
-        scores.append((l.layer_idx, score))
+    for layer in layers:
+        score = layer.weight_range * (1 + layer.outlier_ratio * 10)
+        scores.append((layer.layer_idx, score))
 
     # Sort by sensitivity (most sensitive first)
     scores.sort(key=lambda x: -x[1])
@@ -185,16 +181,17 @@ def format_sensitivity_report(report: SensitivityReport) -> str:
         lines.append(f"    {bits}-bit: {bit_counts[bits]} layers")
 
     # Top 10 most sensitive layers
-    sorted_layers = sorted(report.layers, key=lambda l: -l.outlier_ratio)
+    sorted_layers = sorted(report.layers, key=lambda layer: -layer.outlier_ratio)
     lines.append("")
     lines.append("  Most Sensitive Layers (high outlier ratio → need more bits):")
     lines.append(f"  {'Layer':<40} {'Range':>8} {'Outliers':>10} {'Bits':>5}")
     lines.append(f"  {'-'*40} {'-'*8} {'-'*10} {'-'*5}")
 
-    for l in sorted_layers[:15]:
-        name = l.layer_name[:40] if l.layer_name else f"layer_{l.layer_idx}"
+    for layer in sorted_layers[:15]:
+        name = layer.layer_name[:40] if layer.layer_name else f"layer_{layer.layer_idx}"
         lines.append(
-            f"  {name:<40} {l.weight_range:>8.3f} {l.outlier_ratio:>9.4f} {l.recommended_bits:>5}"
+            f"  {name:<40} {layer.weight_range:>8.3f} "
+            f"{layer.outlier_ratio:>9.4f} {layer.recommended_bits:>5}"
         )
 
     return "\n".join(lines)

@@ -14,9 +14,8 @@ Based on: SGLang RadixAttention (2312.07104), vllm-mlx prefix caching (2601.1913
 
 from __future__ import annotations
 
-import hashlib
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 
@@ -363,7 +362,6 @@ def format_prefix_cache_report(cache: RadixPrefixCache) -> str:
         lines.append("  Cached Prefixes:")
         for e in sorted(entries, key=lambda x: -x.access_count)[:5]:
             age = time.monotonic() - e.created_at
-            preview = str(e.tokens[:8]) + ("..." if len(e.tokens) > 8 else "")
             lines.append(
                 f"    [{e.access_count} hits, {age:.0f}s ago] "
                 f"{len(e.tokens)} tokens, {e.memory_bytes / 1024:.0f} KB"

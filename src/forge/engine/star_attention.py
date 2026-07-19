@@ -89,7 +89,11 @@ def star_attention_mask(
     if cfg.causal:
         allowed = allowed & (k <= q)
 
-    mask = mx.where(allowed, mx.zeros((seq_len, seq_len), dtype=dtype), mx.full((seq_len, seq_len), NEG_INF, dtype=dtype))
+    mask = mx.where(
+        allowed,
+        mx.zeros((seq_len, seq_len), dtype=dtype),
+        mx.full((seq_len, seq_len), NEG_INF, dtype=dtype),
+    )
     return mask
 
 
@@ -201,7 +205,8 @@ def chunked_prefill_with_star(
 
 
 def _scatter_slice(dest: mx.array, src: mx.array, anchor_start: int) -> mx.array:
-    """Return a copy of ``dest`` with ``src`` written at ``[..., anchor_start:anchor_start+src.shape[-2], :]``.
+    """Return a copy of ``dest`` with ``src`` written at
+    ``[..., anchor_start:anchor_start+src.shape[-2], :]``.
 
     MLX arrays are immutable so we rebuild via concatenation. This keeps
     the reference implementation simple; a production rewrite would

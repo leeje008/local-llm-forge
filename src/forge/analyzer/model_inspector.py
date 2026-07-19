@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,7 +14,8 @@ class ModelProfile:
     model_id: str = ""
     architecture: str = ""  # "llama", "qwen2", "mistral", "mixtral", ...
     model_type: str = "dense"  # "dense" | "moe"
-    architecture_family: str = "transformer"  # Phase 11: transformer | mamba | hybrid-mamba | rwkv7 | mla | bitnet
+    # Phase 11: transformer | mamba | hybrid-mamba | rwkv7 | mla | bitnet
+    architecture_family: str = "transformer"
     total_params_b: float = 0.0  # billions
     num_layers: int = 0
     hidden_size: int = 0
@@ -107,7 +107,12 @@ def _detect_architecture_family(raw: dict, architecture: str) -> str:
         return "rwkv7"
 
     # DeepSeek MLA — presence of kv_lora_rank is the definitive signal
-    if "kv_lora_rank" in raw or "q_lora_rank" in raw or "deepseek_v2" in combined or "deepseek_v3" in combined:
+    if (
+        "kv_lora_rank" in raw
+        or "q_lora_rank" in raw
+        or "deepseek_v2" in combined
+        or "deepseek_v3" in combined
+    ):
         return "mla"
 
     # Hybrid Mamba / SSM+Attention
@@ -122,7 +127,11 @@ def _detect_architecture_family(raw: dict, architecture: str) -> str:
             return "hybrid-mamba"
 
     # Pure Mamba
-    if "mamba" in combined or raw.get("mamba_d_state") is not None or raw.get("state_size") is not None:
+    if (
+        "mamba" in combined
+        or raw.get("mamba_d_state") is not None
+        or raw.get("state_size") is not None
+    ):
         # Distinguish pure vs hybrid by the absence of attention heads.
         if raw.get("num_attention_heads", 0) == 0:
             return "mamba"
@@ -194,7 +203,9 @@ def inspect(model_id: str, trust_remote_code: bool = False) -> ModelProfile:
     p.attention_type = _detect_attention_type(p.num_attention_heads, p.num_kv_heads)
 
     # MoE detection
-    num_experts = raw.get("num_experts") or raw.get("num_local_experts") or raw.get("n_routed_experts")
+    num_experts = (
+        raw.get("num_experts") or raw.get("num_local_experts") or raw.get("n_routed_experts")
+    )
     if num_experts:
         p.model_type = "moe"
         p.num_experts = num_experts
@@ -249,11 +260,15 @@ def inspect_local(config_path: str | Path) -> ModelProfile:
         p.head_dim = raw.get("head_dim", p.hidden_size // p.num_attention_heads)
     p.attention_type = _detect_attention_type(p.num_attention_heads, p.num_kv_heads)
 
-    num_experts = raw.get("num_experts") or raw.get("num_local_experts") or raw.get("n_routed_experts")
+    num_experts = (
+        raw.get("num_experts") or raw.get("num_local_experts") or raw.get("n_routed_experts")
+    )
     if num_experts:
         p.model_type = "moe"
         p.num_experts = num_experts
-        p.num_active_experts = raw.get("num_experts_per_tok") or raw.get("num_selected_experts") or 2
+        p.num_active_experts = (
+            raw.get("num_experts_per_tok") or raw.get("num_selected_experts") or 2
+        )
         p.shared_experts = raw.get("n_shared_experts", 0)
         p.total_params_b = _estimate_params_moe(p)
     else:
@@ -275,7 +290,8 @@ def format_report(m: ModelProfile) -> str:
         f"  Parameters:      {m.total_params_b:.1f}B",
         f"  Layers:          {m.num_layers}",
         f"  Hidden Size:     {m.hidden_size}",
-        f"  Attention:       {m.attention_type} ({m.num_attention_heads} heads, {m.num_kv_heads} KV heads)",
+        f"  Attention:       {m.attention_type} "
+        f"({m.num_attention_heads} heads, {m.num_kv_heads} KV heads)",
         f"  Head Dim:        {m.head_dim}",
         f"  Vocab Size:      {m.vocab_size:,}",
         f"  Max Context:     {m.max_context:,}",

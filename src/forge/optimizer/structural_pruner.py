@@ -23,14 +23,12 @@ forge stages (``convert_to_mlx`` etc.) can consume it unchanged.
 from __future__ import annotations
 
 import json
-import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import mlx.core as mx
 import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Block-level pruning (ShortGPT)

@@ -731,7 +731,7 @@ def format_structured_decoding_report(
     for name in _BACKEND_PRIORITY:
         mark = "yes" if available.get(name) else "no "
         lines.append(f"  [{mark}] {name}")
-    lines.append(f"  [yes] dummy  (always available)")
+    lines.append("  [yes] dummy  (always available)")
     lines.append(f"Backend requested: {config.backend}")
     lines.append(f"Backend selected:  {selected}")
     lines.append("")

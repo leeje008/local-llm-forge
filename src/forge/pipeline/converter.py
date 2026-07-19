@@ -190,11 +190,12 @@ def convert_hybrid(
     deployer knows which engine to instantiate.
     """
     # Structural link to the engine module — also verifies it imports.
+    import json
+
     from forge.engine.mamba_engine import (  # noqa: F401
         HybridMambaEngine,
         RWKV7Engine,
     )
-    import json
 
     output_dir.mkdir(parents=True, exist_ok=True)
     try:

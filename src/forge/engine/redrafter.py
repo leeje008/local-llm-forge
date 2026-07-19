@@ -11,10 +11,7 @@ Reference: https://github.com/apple/ml-recurrent-drafter
 
 from __future__ import annotations
 
-import shutil
 from dataclasses import dataclass
-from pathlib import Path
-
 
 # Known ReDrafter models published by Apple Research
 # Format: {target_model_pattern: redrafter_model_id}

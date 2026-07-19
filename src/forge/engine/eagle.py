@@ -23,10 +23,9 @@ fall back to N-gram / draft-model speculative decoding.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Registry of known EAGLE-3 heads (populated as upstream MLX ports appear)

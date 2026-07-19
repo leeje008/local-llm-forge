@@ -38,10 +38,12 @@ class ExpertProfile:
 
     # Per-expert stats
     activation_frequency: dict[int, int] = field(default_factory=dict)  # expert_id → count
-    layer_expert_freq: dict[int, dict[int, int]] = field(default_factory=dict)  # layer → {expert → count}
+    # layer → {expert → count}
+    layer_expert_freq: dict[int, dict[int, int]] = field(default_factory=dict)
 
     # Specialization
-    expert_token_types: dict[int, Counter] = field(default_factory=dict)  # expert → {token_type → count}
+    # expert → {token_type → count}
+    expert_token_types: dict[int, Counter] = field(default_factory=dict)
 
     # SRP/SCH metrics (arXiv:2505.16056)
     srp_score: float = 0.0  # Segment Routing Performance
@@ -86,7 +88,7 @@ def analyze_activations(
             layer_freq[act.layer][eid] += 1
 
     profile.activation_frequency = dict(freq)
-    profile.layer_expert_freq = {l: dict(c) for l, c in layer_freq.items()}
+    profile.layer_expert_freq = {layer: dict(c) for layer, c in layer_freq.items()}
 
     # Detect layers
     layers = set(a.layer for a in activations)

@@ -23,12 +23,11 @@ exercised for shape checks, but is **not** wired into the execution path.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Generator
 
 import mlx.core as mx
 import mlx.nn as nn
-
 
 # ---------------------------------------------------------------------------
 # 11.1  Hybrid Mamba + Transformer

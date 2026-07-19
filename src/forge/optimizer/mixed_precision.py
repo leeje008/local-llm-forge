@@ -97,7 +97,6 @@ def analyze_and_allocate(
         plan.num_layers = n
 
         # Allocate bits based on position in sensitivity ranking
-        available_bits = [2, 3, 4, 6, 8]
         target = int(target_avg_bits)
 
         for rank, stats in enumerate(layer_stats):
@@ -134,14 +133,13 @@ def analyze_and_allocate(
                 plan.bit_distribution[a.bits] = plan.bit_distribution.get(a.bits, 0) + 1
 
             # Rough memory estimate
-            total_params = sum(s["num_params"] for s in layer_stats)
             weighted_bytes = sum(
                 s["num_params"] * (plan.allocations[i].bits / 8)
                 for i, s in enumerate(layer_stats)
             )
             plan.estimated_memory_gb = weighted_bytes / 1e9 * 1.05
 
-    except Exception as e:
+    except Exception:
         plan.allocations = []
 
     return plan
@@ -160,7 +158,6 @@ def apply_mixed_quantization(
         import mlx.core as mx
         import mlx.nn as nn
         from mlx_lm import load
-        from mlx_lm.utils import save_model
 
         model, tokenizer = load(str(model_path))
 
@@ -201,7 +198,9 @@ def apply_mixed_quantization(
         }
         (output_dir / "mixed_precision_plan.json").write_text(json.dumps(plan_data, indent=2))
 
-        return True, f"Mixed-precision quantized ({quantized_count} layers, avg {plan.avg_bits:.1f} bits)"
+        return True, (
+            f"Mixed-precision quantized ({quantized_count} layers, avg {plan.avg_bits:.1f} bits)"
+        )
 
     except Exception as e:
         return False, str(e)
@@ -334,8 +333,8 @@ def analyze_kl_sensitivity(
     )
 
     try:
-        import numpy as np
         import mlx.core as mx
+        import numpy as np
         from mlx_lm import load
 
         model, _ = load(str(model_path))

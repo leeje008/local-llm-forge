@@ -149,7 +149,9 @@ def format_latency_report(p: LatencyProfile) -> str:
 
     if p.tail_latency_tokens:
         lines.append("")
-        lines.append(f"  Tail Latency Tokens (>{p.p99_tpot_ms:.0f}ms): {len(p.tail_latency_tokens)}")
+        lines.append(
+            f"  Tail Latency Tokens (>{p.p99_tpot_ms:.0f}ms): {len(p.tail_latency_tokens)}"
+        )
         lines.append(f"    Positions: {p.tail_latency_tokens[:10]}")
 
     # Latency distribution histogram (text-based)

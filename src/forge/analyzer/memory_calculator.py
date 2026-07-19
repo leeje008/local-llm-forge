@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from forge.analyzer.hardware_profiler import HardwareProfile
 from forge.analyzer.model_inspector import ModelProfile
 
-
 # Bytes per parameter for each quantization level
 BITS_TO_BYTES: dict[str, float] = {
     "fp32": 4.0,
@@ -218,7 +217,9 @@ def format_report(budget: MemoryBudget) -> str:
 
     lines.append("")
     if budget.can_run:
-        lines.append(f"  Recommended: {budget.recommended_quant} @ {budget.recommended_context:,} context")
+        lines.append(
+            f"  Recommended: {budget.recommended_quant} @ {budget.recommended_context:,} context"
+        )
         lines.append(f"  Est. Memory: {budget.recommended_memory_gb:.1f} GB")
     else:
         lines.append("  Result: Model cannot fit in available memory at any quantization level.")

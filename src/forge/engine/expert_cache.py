@@ -25,9 +25,8 @@ object mapping is managed here.
 from __future__ import annotations
 
 from collections import OrderedDict, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
-
 
 # ---------------------------------------------------------------------------
 # Configuration + statistics

@@ -14,7 +14,6 @@ Based on:
 from __future__ import annotations
 
 import json
-import math
 import random
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
@@ -354,9 +353,9 @@ def score_experts_aimer(model_id: str) -> list[ExpertRanking]:
     The returned list is drop-in compatible with `create_pruning_plan`.
     """
     try:
+        import mlx.core as mx
         import numpy as np
         from mlx_lm import load  # type: ignore[import-untyped]
-        import mlx.core as mx
     except ImportError:
         return []
 

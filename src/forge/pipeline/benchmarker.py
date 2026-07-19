@@ -7,8 +7,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from forge.optimizer.profiler import ProfileMetrics, quick_bench
-
+from forge.optimizer.profiler import quick_bench
 
 # Standard benchmark prompts of varying complexity
 BENCH_PROMPTS = {

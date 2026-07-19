@@ -13,7 +13,6 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -217,7 +216,9 @@ class TurboQuantCompressor:
         # Vectorized bucket assignment via boundaries
         codes = mx.zeros(normalized.shape, dtype=mx.uint8)
         for i in range(1, num_levels):
-            codes = mx.where(normalized >= boundaries[i], mx.full(normalized.shape, i, dtype=mx.uint8), codes)
+            codes = mx.where(
+                normalized >= boundaries[i], mx.full(normalized.shape, i, dtype=mx.uint8), codes
+            )
         mx.eval(codes)
 
         return CompressedKV(
@@ -664,7 +665,9 @@ def recommend_kv_optimization(
         savings = kv_rough_gb * (1 - 1 / 5.5)
         recommendations["turbo_kv"] = {
             "enabled": True,
-            "reason": f"KV cache ~{kv_pct:.0f}% of memory. TurboQuant saves ~{savings:.1f}GB (5.5x)",
+            "reason": (
+                f"KV cache ~{kv_pct:.0f}% of memory. TurboQuant saves ~{savings:.1f}GB (5.5x)"
+            ),
             "savings_gb": savings,
             "priority": "high" if kv_pct > 30 else "medium",
         }
@@ -682,7 +685,9 @@ def recommend_kv_optimization(
         recommendations["h2o_eviction"] = {
             "enabled": True,
             "budget_ratio": 0.2,
-            "reason": f"Context {context_length:,} is long. H2O keeps 20% heavy-hitters, saves ~80% KV",
+            "reason": (
+                f"Context {context_length:,} is long. H2O keeps 20% heavy-hitters, saves ~80% KV"
+            ),
         }
 
     # Ada-KV: upgrade H2O with per-head budgets
@@ -779,7 +784,8 @@ class LAVaConfig:
     """Configuration for LAVa unified layer + head KV eviction."""
 
     total_budget_ratio: float = 0.2       # Global KV budget as fraction of full cache
-    layer_weight_alpha: float = 0.5        # Layer-level allocation power (0=uniform, 1=proportional)
+    layer_weight_alpha: float = 0.5        # Layer-level allocation power
+                                            # (0=uniform, 1=proportional)
     head_weight_alpha: float = 0.5         # Head-level allocation power (0=uniform, 1=proportional)
     min_layer_budget: int = 32             # Minimum tokens kept per layer
     min_head_budget: int = 8               # Minimum tokens kept per head
