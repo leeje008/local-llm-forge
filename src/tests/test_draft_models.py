@@ -1,19 +1,12 @@
 """Characterization tests for forge.engine.speculative.draft_models.
 
-Pins current behavior including two suspicious spots (kept as-is, noted
-inline and in the final report rather than fixed):
-
-- The ``FALLBACK_DRAFTS`` loop in ``select_draft_model`` returns the first
-  fallback unconditionally — it never checks ``available_memory_gb`` against
-  ``estimated_size_gb``, unlike the architecture-matched branch above it.
-- The "non-mlx fallback" inner loop (entered only when
-  ``prefer_mlx_community=True`` and the mlx candidate doesn't fit) is
-  effectively dead code for every entry currently in ``DRAFT_MODELS``: its
-  hardcoded ``est_size = 1.0`` is never smaller than the mlx candidate's size
-  estimate that already failed, so it can never succeed where the mlx
-  candidate didn't. As a result ``prefer_mlx_community=True`` and
-  ``prefer_mlx_community=False`` currently produce identical output for
-  every known architecture.
+Pins current behavior. Two spots that previously produced suspicious results
+were fixed (commit updating these tests): the ``FALLBACK_DRAFTS`` loop now
+honors ``available_memory_gb`` (returns ``None`` when even the fallback does
+not fit), and the unreachable ``prefer_mlx_community`` non-mlx inner loop was
+removed. ``prefer_mlx_community=True`` and ``=False`` still produce identical
+output for every known architecture, because every current ``DRAFT_MODELS``
+entry that fits is an mlx-community candidate.
 """
 
 from __future__ import annotations
@@ -49,22 +42,19 @@ def test_select_draft_model_unknown_architecture_falls_back():
     assert result.estimated_size_gb == 0.3
 
 
-def test_select_draft_model_memory_constrained_falls_back_even_for_known_architecture():
-    # qwen2's mlx candidate needs 0.3GB; 0.1GB isn't enough, so it falls
-    # through to the universal fallback.
+def test_select_draft_model_memory_constrained_returns_none_when_nothing_fits():
+    # qwen2's mlx candidate needs 0.3GB and the universal fallback also needs
+    # 0.3GB; with only 0.1GB neither fits, so the function returns None.
     result = select_draft_model("qwen2", available_memory_gb=0.1)
-    assert result.source == "fallback"
-    assert result.model_id == "mlx-community/SmolLM2-360M-Instruct-4bit"
+    assert result is None
 
 
-def test_select_draft_model_fallback_ignores_available_memory_budget():
-    # BUG (pinned, not fixed): the fallback loop returns the first fallback
-    # unconditionally, even though its own estimated_size_gb (0.3) exceeds
-    # the requested budget (0.01GB) — no fit check like the matched branch.
+def test_select_draft_model_fallback_respects_available_memory_budget():
+    # Fixed: the fallback loop now honors the budget. With 0.01GB available,
+    # even the 0.3GB universal fallback does not fit, so the function returns
+    # None instead of a model that cannot load.
     result = select_draft_model("qwen2", available_memory_gb=0.01)
-    assert result.source == "fallback"
-    assert result.estimated_size_gb == 0.3
-    assert result.estimated_size_gb > 0.01
+    assert result is None
 
 
 @pytest.mark.parametrize("prefer_mlx_community", [True, False])

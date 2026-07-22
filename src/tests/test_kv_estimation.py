@@ -1,10 +1,8 @@
 """Characterization tests for forge.engine.kv_cache.estimation.
 
-These pin CURRENT behavior, including two spots that look like bugs (noted
-inline) rather than "fixing" them:
+These pin CURRENT behavior. ``estimate_max_context`` now clamps a negative
+``available_memory_mb`` to 0 (fixed). One documented quirk remains pinned as-is:
 
-- ``estimate_max_context`` with a negative ``available_memory_mb`` returns a
-  negative token count instead of clamping to 0.
 - ``recommend_kv_optimization``'s percentage threshold checks are strict ``>``
   (not ``>=``), so a context length exactly at a threshold does not trigger
   the corresponding recommendation.
@@ -78,10 +76,10 @@ def test_estimate_max_context_zero_available_memory_is_zero():
     assert estimate_max_context(28, 4, 128, available_memory_mb=0) == 0
 
 
-def test_estimate_max_context_negative_available_memory_pins_actual_negative_result():
-    # BUG (pinned, not fixed): a negative memory budget is not clamped and
-    # produces a nonsensical negative token count rather than 0.
-    assert estimate_max_context(28, 4, 128, available_memory_mb=-100) == -1828
+def test_estimate_max_context_negative_available_memory_clamps_to_zero():
+    # Fixed: a negative memory budget is clamped to 0 rather than producing a
+    # nonsensical negative token count.
+    assert estimate_max_context(28, 4, 128, available_memory_mb=-100) == 0
 
 
 # --------------------------------------------------------------------------- #

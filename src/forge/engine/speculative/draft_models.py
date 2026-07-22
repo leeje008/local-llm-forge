@@ -71,27 +71,16 @@ def select_draft_model(
                         architecture_match=True,
                         source="architecture_match",
                     )
-            # Try non-mlx versions
-            if prefer_mlx_community:
-                for candidate in candidates:
-                    if "mlx-community" not in candidate:
-                        est_size = 1.0
-                        if est_size < available_memory_gb:
-                            return DraftModelInfo(
-                                model_id=candidate,
-                                estimated_size_gb=est_size,
-                                architecture_match=True,
-                                source="architecture_match",
-                            )
-
-    # Fallback to universal small model
+    # Fallback to universal small model (respecting the memory budget)
     for fallback in FALLBACK_DRAFTS:
-        return DraftModelInfo(
-            model_id=fallback,
-            estimated_size_gb=0.3,
-            architecture_match=False,
-            source="fallback",
-        )
+        est_size = 0.3
+        if est_size < available_memory_gb:
+            return DraftModelInfo(
+                model_id=fallback,
+                estimated_size_gb=est_size,
+                architecture_match=False,
+                source="fallback",
+            )
 
     return None
 

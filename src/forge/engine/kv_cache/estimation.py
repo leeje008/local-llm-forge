@@ -52,7 +52,7 @@ def estimate_max_context(
         per_token_bytes = per_token_bytes / 2
 
     max_tokens = int((available_memory_mb * 1024 * 1024) / per_token_bytes)
-    return max_tokens
+    return max(0, max_tokens)
 
 
 def recommend_kv_optimization(
